@@ -1,68 +1,68 @@
 # Obsian AnythingLLM Sync
 
-Plugin Obsidian pour synchroniser votre vault avec AnythingLLM pour la fonctionnalité RAG (Retrieval-Augmented Generation).
+Obsidian plugin to synchronize your vault with AnythingLLM for RAG (Retrieval-Augmented Generation).
 
-## Fonctionnalités
+## Features
 
-- Synchronisation automatique ou manuelle de votre vault Obsidian vers AnythingLLM
-- Sync des fichiers individuels ou de tout le vault
-- Détection des modifications par hash pour éviter les re-uploads inutiles
-- Support des fichiers vides (ignorés)
-- Interface de configuration simple
+- Automatic or manual synchronization of your Obsidian vault to AnythingLLM
+- Sync individual files or the entire vault
+- Change detection via hash to avoid unnecessary re-uploads
+- Empty file support (ignored)
+- Simple configuration interface
 
 ## Installation
 
-1. Allez dans **Settings** → **Community plugins**
-2. Désactivez le mode sans risque (Safe mode)
-3. Recherchez "Obsian AnythingLLM Sync"
-4. Installez et activez le plugin
+1. Go to **Settings** → **Community plugins**
+2. Disable Safe mode
+3. Search for "Obsian AnythingLLM Sync"
+4. Install and enable the plugin
 
 ## Configuration
 
-1. Ouvrez les paramètres du plugin
-2. Configurez :
-   - **AnythingLLM URL** : L'URL de votre instance AnythingLLM (ex: `http://localhost:3001`)
-   - **API Key** : Votre clé API AnythingLLM (Settings → API Keys dans AnythingLLM)
-   - **Workspace Slug** : Le slug de votre workspace (ex: `my-workspace`)
-   - **Folder Name** : Le nom du dossier dans AnythingLLM (ex: `Obsidian`)
+1. Open the plugin settings
+2. Configure:
+   - **AnythingLLM URL**: Your AnythingLLM instance URL (e.g., `http://localhost:3001`)
+   - **API Key**: Your AnythingLLM API key (Settings → API Keys in AnythingLLM)
+   - **Workspace Slug**: Your workspace slug (e.g., `my-workspace`)
+   - **Folder Name**: The folder name in AnythingLLM (e.g., `Obsidian`)
 
-3. Cliquez sur "Test" pour vérifier la connexion
+3. Click "Test" to verify the connection
 
-## Utilisation
+## Usage
 
-### Commandes
+### Commands
 
-- **Sync vault to AnythingLLM** : Synchronise tout le vault
-- **Sync current file** : Synchronise le fichier actuellement ouvert
-- **Force resync all files** : Force la ré-synchronisation de tous les fichiers (efface le cache)
+- **Sync vault to AnythingLLM**: Synchronize the entire vault
+- **Sync current file**: Synchronize the currently open file
+- **Force resync all files**: Force re-synchronization of all files (clears cache)
 
 ### Options
 
-- **Auto Sync** : Synchronise automatiquement au chargement du plugin
-- **Sync on Save** : Synchronise automatiquement à chaque sauvegarde d'un fichier
+- **Auto Sync**: Automatically sync on plugin load
+- **Sync on Save**: Automatically sync on file save
 
-## Générer une clé API dans AnythingLLM
+## Generate an API Key in AnythingLLM
 
-1. Allez dans AnythingLLM
+1. Go to AnythingLLM
 2. Settings → API Keys
-3. Cliquez sur "Create New Key"
-4. Copiez la clé et collez-la dans les paramètres du plugin
+3. Click "Create New Key"
+4. Copy the key and paste it into the plugin settings
 
-## API AnythingLLM
+## AnythingLLM API
 
-Ce plugin utilise l'API officielle AnythingLLM :
-- `POST /api/v1/document/create-folder` - Créer le dossier
-- `POST /api/v1/document/upload/{folder}` - Uploader un fichier
-- `POST /api/v1/workspace/{slug}/update-embeddings` - Mettre à jour les embeddings
+This plugin uses the official AnythingLLM API:
+- `POST /api/v1/document/create-folder` - Create folder
+- `POST /api/v1/document/upload/{folder}` - Upload file
+- `POST /api/v1/workspace/{slug}/update-embeddings` - Update embeddings
 
-## Dépannage
+## Troubleshooting
 
-Si la synchronisation échoue :
-1. Vérifiez qu'AnythingLLM est en cours d'exécution
-2. Vérifiez que votre clé API est correcte
-3. Vérifiez que le workspace existe dans AnythingLLM
-4. Les fichiers vides sont automatiquement ignorés
+If synchronization fails:
+1. Verify AnythingLLM is running
+2. Verify your API key is correct
+3. Verify the workspace exists in AnythingLLM
+4. Empty files are automatically ignored
 
-## Licence
+## License
 
 MIT License
