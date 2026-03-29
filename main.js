@@ -31,13 +31,16 @@ class AnythingLLMSyncSettingsTab extends obsidian_1.PluginSettingTab {
         new obsidian_1.Setting(containerEl)
             .setName("API Key")
             .setDesc("Your AnythingLLM API key")
-            .addText((text) => text
-            .setPlaceholder("Enter your API key")
-            .setValue(this.plugin.settings.apiKey)
-            .onChange(async (value) => {
-            this.plugin.settings.apiKey = value;
-            await this.plugin.saveSettings();
-        }));
+            .addText((text) => {
+            text.inputEl.type = "password";
+            text
+                .setPlaceholder("Enter your API key")
+                .setValue(this.plugin.settings.apiKey)
+                .onChange(async (value) => {
+                this.plugin.settings.apiKey = value;
+                await this.plugin.saveSettings();
+            });
+        });
         new obsidian_1.Setting(containerEl)
             .setName("Workspace Slug")
             .setDesc("The slug of your AnythingLLM workspace")
@@ -91,6 +94,7 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
         this.syncState = {};
         this.statusBarItem = null;
         this.syncInProgress = false;
+        this.syncTimeout = null;
     }
     async onload() {
         await this.loadSettings();
@@ -123,17 +127,22 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
         if (this.settings.autoSync) {
             this.syncVault();
         }
-        const vault = this.app.vault;
-        vault.on("modify", (file) => {
-            if (this.settings.syncOnSave && file.extension === "md") {
-                this.syncFile(file);
-            }
-        });
-        vault.on("create", (file) => {
-            if (this.settings.syncOnSave && file.extension === "md") {
-                this.syncFile(file);
-            }
-        });
+        this.registerEvent(this.app.vault.on("modify", (file) => {
+            if (!(file instanceof obsidian_1.TFile) || file.extension !== "md")
+                return;
+            if (!this.settings.syncOnSave)
+                return;
+            if (this.syncTimeout)
+                clearTimeout(this.syncTimeout);
+            this.syncTimeout = setTimeout(() => this.syncFile(file), 2000);
+        }));
+        this.registerEvent(this.app.vault.on("create", (file) => {
+            if (!(file instanceof obsidian_1.TFile) || file.extension !== "md")
+                return;
+            if (!this.settings.syncOnSave)
+                return;
+            this.syncFile(file);
+        }));
     }
     async loadSettings() {
         this.settings = {
@@ -183,8 +192,7 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
                 headers: this.getApiHeaders(),
             });
             if (response.ok) {
-                const data = await response.json();
-                new obsidian_1.Notice(`Connected to AnythingLLM: ${data.version || "Unknown version"}`);
+                new obsidian_1.Notice("Connected to AnythingLLM");
             }
             else {
                 new obsidian_1.Notice(`Connection failed: ${response.statusText}`);
@@ -285,7 +293,7 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
                 newState[file.path] = currentHash;
                 const needsSync = this.syncState[file.path] !== currentHash;
                 console.log(`File ${file.name}: needsSync=${needsSync}`);
-                if (needsSync || !this.syncState[file.path]) {
+                if (needsSync) {
                     const formData = new FormData();
                     const blob = new Blob([fileContent], { type: "text/markdown" });
                     formData.append("file", blob, file.name);
@@ -342,26 +350,9 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
         }
     }
     async forceResyncAll() {
-        if (this.syncInProgress) {
-            new obsidian_1.Notice("Sync already in progress");
-            return;
-        }
-        this.syncInProgress = true;
-        this.updateStatus("Force resync...");
-        try {
-            this.syncState = {};
-            await this.saveSyncState();
-            await this.syncVault();
-            new obsidian_1.Notice("Force resync complete");
-        }
-        catch (error) {
-            console.error("Force resync error:", error);
-            new obsidian_1.Notice(`Force resync error: ${error.message}`);
-        }
-        finally {
-            this.syncInProgress = false;
-            this.updateStatus("Ready");
-        }
+        this.syncState = {};
+        await this.saveSyncState();
+        await this.syncVault();
     }
     updateStatus(text) {
         if (this.statusBarItem) {

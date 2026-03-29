@@ -1,4 +1,4 @@
-import { App, Plugin, Notice, TFile, PluginSettingTab, Setting } from "obsidian";
+import { App, Plugin, Notice, TFile, PluginSettingTab, Setting, TAbstractFile } from "obsidian";
 
 interface AnythingLLMSyncSettings {
   anythingLLMUrl: string;
@@ -47,15 +47,16 @@ class AnythingLLMSyncSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("API Key")
       .setDesc("Your AnythingLLM API key")
-      .addText((text) =>
+      .addText((text) => {
+        text.inputEl.type = "password";
         text
           .setPlaceholder("Enter your API key")
           .setValue(this.plugin.settings.apiKey)
           .onChange(async (value) => {
             this.plugin.settings.apiKey = value;
             await this.plugin.saveSettings();
-          })
-      );
+          });
+      });
 
     new Setting(containerEl)
       .setName("Workspace Slug")
@@ -123,6 +124,7 @@ export default class AnythingLLMSyncPlugin extends Plugin {
   syncState: Record<string, string> = {};
   private statusBarItem: HTMLElement | null = null;
   private syncInProgress = false;
+  private syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -161,18 +163,22 @@ export default class AnythingLLMSyncPlugin extends Plugin {
       this.syncVault();
     }
 
-    const vault = this.app.vault as unknown as { on(name: string, callback: (file: TFile) => void): void };
-    vault.on("modify", (file: TFile) => {
-      if (this.settings.syncOnSave && file.extension === "md") {
-        this.syncFile(file);
-      }
-    });
+    this.registerEvent(
+      this.app.vault.on("modify", (file: TAbstractFile) => {
+        if (!(file instanceof TFile) || file.extension !== "md") return;
+        if (!this.settings.syncOnSave) return;
+        if (this.syncTimeout) clearTimeout(this.syncTimeout);
+        this.syncTimeout = setTimeout(() => this.syncFile(file), 2000);
+      })
+    );
 
-    vault.on("create", (file: TFile) => {
-      if (this.settings.syncOnSave && file.extension === "md") {
+    this.registerEvent(
+      this.app.vault.on("create", (file: TAbstractFile) => {
+        if (!(file instanceof TFile) || file.extension !== "md") return;
+        if (!this.settings.syncOnSave) return;
         this.syncFile(file);
-      }
-    });
+      })
+    );
   }
 
   async loadSettings(): Promise<void> {
@@ -234,10 +240,7 @@ export default class AnythingLLMSyncPlugin extends Plugin {
       });
 
       if (response.ok) {
-        const data = await response.json() as { version?: string };
-        new Notice(
-          `Connected to AnythingLLM: ${data.version || "Unknown version"}`
-        );
+        new Notice("Connected to AnythingLLM");
       } else {
         new Notice(`Connection failed: ${response.statusText}`);
       }
@@ -363,7 +366,7 @@ export default class AnythingLLMSyncPlugin extends Plugin {
         const needsSync = this.syncState[file.path] !== currentHash;
         console.log(`File ${file.name}: needsSync=${needsSync}`);
         
-        if (needsSync || !this.syncState[file.path]) {
+        if (needsSync) {
           const formData = new FormData();
           const blob = new Blob([fileContent], { type: "text/markdown" });
           formData.append("file", blob, file.name);
@@ -432,26 +435,9 @@ export default class AnythingLLMSyncPlugin extends Plugin {
   }
 
   async forceResyncAll(): Promise<void> {
-    if (this.syncInProgress) {
-      new Notice("Sync already in progress");
-      return;
-    }
-
-    this.syncInProgress = true;
-    this.updateStatus("Force resync...");
-
-    try {
-      this.syncState = {};
-      await this.saveSyncState();
-      await this.syncVault();
-      new Notice("Force resync complete");
-    } catch (error) {
-      console.error("Force resync error:", error);
-      new Notice(`Force resync error: ${(error as Error).message}`);
-    } finally {
-      this.syncInProgress = false;
-      this.updateStatus("Ready");
-    }
+    this.syncState = {};
+    await this.saveSyncState();
+    await this.syncVault();
   }
 
   private updateStatus(text: string): void {
