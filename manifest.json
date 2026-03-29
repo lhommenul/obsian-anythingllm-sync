@@ -2,8 +2,8 @@
   "id": "obsian-anythingllm-sync",
   "name": "Obsian AnythingLLM Sync",
   "version": "1.0.0",
-  "description": "Synchronize your Obsidian vault with AnythingLLM for RAG",
+  "description": "Sync your vault with AnythingLLM for RAG.",
   "author": "lhommenul",
-  "api": "1.0.0",
+  "minAppVersion": "0.15.0",
   "isDesktopOnly": false
 }
