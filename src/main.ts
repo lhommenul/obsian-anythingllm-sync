@@ -124,7 +124,7 @@ export default class AnythingLLMSyncPlugin extends Plugin {
   syncState: Record<string, string> = {};
   private statusBarItem: HTMLElement | null = null;
   private syncInProgress = false;
-  private syncTimeout: ReturnType<typeof setTimeout> | null = null;
+  private syncTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -167,8 +167,17 @@ export default class AnythingLLMSyncPlugin extends Plugin {
       this.app.vault.on("modify", (file: TAbstractFile) => {
         if (!(file instanceof TFile) || file.extension !== "md") return;
         if (!this.settings.syncOnSave) return;
-        if (this.syncTimeout) clearTimeout(this.syncTimeout);
-        this.syncTimeout = setTimeout(() => this.syncFile(file), 2000);
+        
+        const existing = this.syncTimeouts.get(file.path);
+        if (existing) clearTimeout(existing);
+        
+        this.syncTimeouts.set(
+          file.path,
+          setTimeout(() => {
+            this.syncTimeouts.delete(file.path);
+            this.syncFile(file);
+          }, 2000)
+        );
       })
     );
 
@@ -181,15 +190,25 @@ export default class AnythingLLMSyncPlugin extends Plugin {
     );
   }
 
+  onunload(): void {
+    for (const t of this.syncTimeouts.values()) {
+      clearTimeout(t);
+    }
+    this.syncTimeouts.clear();
+  }
+
+  private getStateFilePath(): string {
+    return `${this.manifest.dir}/sync-state.json`;
+  }
+
   async loadSettings(): Promise<void> {
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...(await this.loadData()),
     };
 
-    const stateFile = ".anythingllm-sync-state.json";
     try {
-      const data = await this.app.vault.adapter.read(stateFile);
+      const data = await this.app.vault.adapter.read(this.getStateFilePath());
       this.syncState = JSON.parse(data);
     } catch {
       this.syncState = {};
@@ -201,21 +220,22 @@ export default class AnythingLLMSyncPlugin extends Plugin {
   }
 
   private async saveSyncState(): Promise<void> {
-    const stateFile = ".anythingllm-sync-state.json";
     await this.app.vault.adapter.write(
-      stateFile,
+      this.getStateFilePath(),
       JSON.stringify(this.syncState, null, 2)
     );
   }
 
-  private simpleHash(str: string): string {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return hash.toString(16);
+  private async fileHash(content: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(content);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  private getSafeFileName(file: TFile): string {
+    return file.path.replace(/\//g, "_") + ".md";
   }
 
   private getApiHeaders(): Record<string, string> {
@@ -270,6 +290,7 @@ export default class AnythingLLMSyncPlugin extends Plugin {
 
   async syncFile(file: TFile): Promise<void> {
     if (this.syncInProgress) {
+      new Notice("Sync in progress, file queued");
       return;
     }
 
@@ -286,14 +307,15 @@ export default class AnythingLLMSyncPlugin extends Plugin {
         return;
       }
       
-      const currentHash = this.simpleHash(fileContent);
+      const currentHash = await this.fileHash(fileContent);
       const fileKey = file.path;
 
       await this.createFolder();
 
       const formData = new FormData();
       const blob = new Blob([fileContent], { type: "text/markdown" });
-      formData.append("file", blob, file.name);
+      const safeName = this.getSafeFileName(file);
+      formData.append("file", blob, safeName);
 
       const { anythingLLMUrl, folderName } = this.settings;
 
@@ -360,7 +382,7 @@ export default class AnythingLLMSyncPlugin extends Plugin {
           continue;
         }
         
-        const currentHash = this.simpleHash(fileContent);
+        const currentHash = await this.fileHash(fileContent);
         newState[file.path] = currentHash;
 
         const needsSync = this.syncState[file.path] !== currentHash;
@@ -369,7 +391,8 @@ export default class AnythingLLMSyncPlugin extends Plugin {
         if (needsSync) {
           const formData = new FormData();
           const blob = new Blob([fileContent], { type: "text/markdown" });
-          formData.append("file", blob, file.name);
+          const safeName = this.getSafeFileName(file);
+          formData.append("file", blob, safeName);
 
           const { anythingLLMUrl, folderName } = this.settings;
 

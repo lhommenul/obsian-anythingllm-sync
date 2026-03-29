@@ -94,7 +94,7 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
         this.syncState = {};
         this.statusBarItem = null;
         this.syncInProgress = false;
-        this.syncTimeout = null;
+        this.syncTimeouts = new Map();
     }
     async onload() {
         await this.loadSettings();
@@ -132,9 +132,13 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
                 return;
             if (!this.settings.syncOnSave)
                 return;
-            if (this.syncTimeout)
-                clearTimeout(this.syncTimeout);
-            this.syncTimeout = setTimeout(() => this.syncFile(file), 2000);
+            const existing = this.syncTimeouts.get(file.path);
+            if (existing)
+                clearTimeout(existing);
+            this.syncTimeouts.set(file.path, setTimeout(() => {
+                this.syncTimeouts.delete(file.path);
+                this.syncFile(file);
+            }, 2000));
         }));
         this.registerEvent(this.app.vault.on("create", (file) => {
             if (!(file instanceof obsidian_1.TFile) || file.extension !== "md")
@@ -144,14 +148,22 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
             this.syncFile(file);
         }));
     }
+    onunload() {
+        for (const t of this.syncTimeouts.values()) {
+            clearTimeout(t);
+        }
+        this.syncTimeouts.clear();
+    }
+    getStateFilePath() {
+        return `${this.manifest.dir}/sync-state.json`;
+    }
     async loadSettings() {
         this.settings = {
             ...DEFAULT_SETTINGS,
             ...(await this.loadData()),
         };
-        const stateFile = ".anythingllm-sync-state.json";
         try {
-            const data = await this.app.vault.adapter.read(stateFile);
+            const data = await this.app.vault.adapter.read(this.getStateFilePath());
             this.syncState = JSON.parse(data);
         }
         catch {
@@ -162,17 +174,17 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
         await this.saveData(this.settings);
     }
     async saveSyncState() {
-        const stateFile = ".anythingllm-sync-state.json";
-        await this.app.vault.adapter.write(stateFile, JSON.stringify(this.syncState, null, 2));
+        await this.app.vault.adapter.write(this.getStateFilePath(), JSON.stringify(this.syncState, null, 2));
     }
-    simpleHash(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
-        }
-        return hash.toString(16);
+    async fileHash(content) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(content);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+    getSafeFileName(file) {
+        return file.path.replace(/\//g, "_") + ".md";
     }
     getApiHeaders() {
         return {
@@ -219,6 +231,7 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
     }
     async syncFile(file) {
         if (this.syncInProgress) {
+            new obsidian_1.Notice("Sync in progress, file queued");
             return;
         }
         this.syncInProgress = true;
@@ -231,12 +244,13 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
                 this.updateStatus("Ready");
                 return;
             }
-            const currentHash = this.simpleHash(fileContent);
+            const currentHash = await this.fileHash(fileContent);
             const fileKey = file.path;
             await this.createFolder();
             const formData = new FormData();
             const blob = new Blob([fileContent], { type: "text/markdown" });
-            formData.append("file", blob, file.name);
+            const safeName = this.getSafeFileName(file);
+            formData.append("file", blob, safeName);
             const { anythingLLMUrl, folderName } = this.settings;
             const response = await fetch(`${anythingLLMUrl}/api/v1/document/upload/${folderName}`, {
                 method: "POST",
@@ -289,14 +303,15 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
                     newState[file.path] = "";
                     continue;
                 }
-                const currentHash = this.simpleHash(fileContent);
+                const currentHash = await this.fileHash(fileContent);
                 newState[file.path] = currentHash;
                 const needsSync = this.syncState[file.path] !== currentHash;
                 console.log(`File ${file.name}: needsSync=${needsSync}`);
                 if (needsSync) {
                     const formData = new FormData();
                     const blob = new Blob([fileContent], { type: "text/markdown" });
-                    formData.append("file", blob, file.name);
+                    const safeName = this.getSafeFileName(file);
+                    formData.append("file", blob, safeName);
                     const { anythingLLMUrl, folderName } = this.settings;
                     const response = await fetch(`${anythingLLMUrl}/api/v1/document/upload/${folderName}`, {
                         method: "POST",
