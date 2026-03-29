@@ -1,0 +1,9 @@
+{
+  "id": "obsian-anythingllm-sync",
+  "name": "Obsian AnythingLLM Sync",
+  "version": "1.0.0",
+  "description": "Synchronize your Obsidian vault with AnythingLLM for RAG",
+  "author": "Obsian",
+  "api": "1.0.0",
+  "isDesktopOnly": false
+}
