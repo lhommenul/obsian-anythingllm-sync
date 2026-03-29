@@ -198,7 +198,9 @@ export default class AnythingLLMSyncPlugin extends Plugin {
   }
 
   private getStateFilePath(): string {
-    return `${this.manifest.dir}/sync-state.json`;
+    const dir = this.manifest.dir;
+    if (!dir) throw new Error("Plugin directory not available");
+    return `${dir}/sync-state.json`;
   }
 
   async loadSettings(): Promise<void> {
@@ -235,7 +237,7 @@ export default class AnythingLLMSyncPlugin extends Plugin {
   }
 
   private getSafeFileName(file: TFile): string {
-    return file.path.replace(/\//g, "_") + ".md";
+    return file.path.replace(/\//g, "_");
   }
 
   private getApiHeaders(): Record<string, string> {
@@ -290,7 +292,7 @@ export default class AnythingLLMSyncPlugin extends Plugin {
 
   async syncFile(file: TFile): Promise<void> {
     if (this.syncInProgress) {
-      new Notice("Sync in progress, file queued");
+      new Notice("Sync in progress, please retry later");
       return;
     }
 
@@ -383,9 +385,9 @@ export default class AnythingLLMSyncPlugin extends Plugin {
         }
         
         const currentHash = await this.fileHash(fileContent);
-        newState[file.path] = currentHash;
+        const oldHash = this.syncState[file.path];
 
-        const needsSync = this.syncState[file.path] !== currentHash;
+        const needsSync = oldHash !== currentHash;
         console.log(`File ${file.name}: needsSync=${needsSync}`);
         
         if (needsSync) {
@@ -410,6 +412,7 @@ export default class AnythingLLMSyncPlugin extends Plugin {
           if (response.ok) {
             uploadedCount++;
             console.log(`Uploaded: ${file.name}`);
+            newState[file.path] = currentHash;
             const data = await response.json() as { documents?: Array<{ location?: string }> };
             const docPath = data?.documents?.[0]?.location;
             if (docPath) {
@@ -417,7 +420,10 @@ export default class AnythingLLMSyncPlugin extends Plugin {
             }
           } else {
             console.error(`Upload failed for ${file.name}: ${response.status} ${response.statusText}`);
+            newState[file.path] = oldHash || "";
           }
+        } else {
+          newState[file.path] = currentHash;
         }
       }
 

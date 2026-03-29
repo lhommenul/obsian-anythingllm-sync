@@ -155,7 +155,10 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
         this.syncTimeouts.clear();
     }
     getStateFilePath() {
-        return `${this.manifest.dir}/sync-state.json`;
+        const dir = this.manifest.dir;
+        if (!dir)
+            throw new Error("Plugin directory not available");
+        return `${dir}/sync-state.json`;
     }
     async loadSettings() {
         this.settings = {
@@ -184,7 +187,7 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
         return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
     }
     getSafeFileName(file) {
-        return file.path.replace(/\//g, "_") + ".md";
+        return file.path.replace(/\//g, "_");
     }
     getApiHeaders() {
         return {
@@ -231,7 +234,7 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
     }
     async syncFile(file) {
         if (this.syncInProgress) {
-            new obsidian_1.Notice("Sync in progress, file queued");
+            new obsidian_1.Notice("Sync in progress, please retry later");
             return;
         }
         this.syncInProgress = true;
@@ -304,8 +307,8 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
                     continue;
                 }
                 const currentHash = await this.fileHash(fileContent);
-                newState[file.path] = currentHash;
-                const needsSync = this.syncState[file.path] !== currentHash;
+                const oldHash = this.syncState[file.path];
+                const needsSync = oldHash !== currentHash;
                 console.log(`File ${file.name}: needsSync=${needsSync}`);
                 if (needsSync) {
                     const formData = new FormData();
@@ -323,6 +326,7 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
                     if (response.ok) {
                         uploadedCount++;
                         console.log(`Uploaded: ${file.name}`);
+                        newState[file.path] = currentHash;
                         const data = await response.json();
                         const docPath = data?.documents?.[0]?.location;
                         if (docPath) {
@@ -331,7 +335,11 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
                     }
                     else {
                         console.error(`Upload failed for ${file.name}: ${response.status} ${response.statusText}`);
+                        newState[file.path] = oldHash || "";
                     }
+                }
+                else {
+                    newState[file.path] = currentHash;
                 }
             }
             console.log(`Uploaded ${uploadedCount} files, embedding ${filesToEmbed.length}`);
