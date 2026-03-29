@@ -312,6 +312,12 @@ export default class AnythingLLMSyncPlugin extends Plugin {
       const currentHash = await this.fileHash(fileContent);
       const fileKey = file.path;
 
+      if (this.syncState[fileKey] === currentHash) {
+        this.syncInProgress = false;
+        this.updateStatus("Ready");
+        return;
+      }
+
       await this.createFolder();
 
       const formData = new FormData();

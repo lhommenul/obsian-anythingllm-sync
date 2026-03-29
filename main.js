@@ -249,6 +249,11 @@ class AnythingLLMSyncPlugin extends obsidian_1.Plugin {
             }
             const currentHash = await this.fileHash(fileContent);
             const fileKey = file.path;
+            if (this.syncState[fileKey] === currentHash) {
+                this.syncInProgress = false;
+                this.updateStatus("Ready");
+                return;
+            }
             await this.createFolder();
             const formData = new FormData();
             const blob = new Blob([fileContent], { type: "text/markdown" });
